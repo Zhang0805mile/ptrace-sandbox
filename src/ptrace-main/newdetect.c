@@ -31,35 +31,36 @@
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
 #define UNUSED(x) x __attribute__((unused))
-
+// 定义了一个存储用户数据的结构体，包括syscall ID和最大内存使用量等信息
 struct userdata {
     register_type syscall_id;
     unsigned long max_mem;
 };
-
+// 存储页面大小，
 struct {
     unsigned long page_size;
 } static_data;
 
+//监视内存，会在syscall结束后检查进程的内存使用情况，并且更新‘data->max_mem’的值
 void check_memory_usage(pid_t pid, void* data_) {
     struct userdata* data = (struct userdata*)data_;
 
     struct statm_info statm = get_process_statm_info(pid);
     data->max_mem = max(data->max_mem, statm.size * static_data.page_size);
 }
-
+//根据给定的id和函数指针get_name获取对应的名称，并将名称和id组合成一个字符串，存储在buf中。
 void combined_name(char* buf, size_t buf_sz, long id, const char* (*get_name)(long)) {
     const char* friendlyname = get_name(id);
     snprintf(buf, buf_sz, "%s{%ld}", (friendlyname == NULL ? "unknown" : friendlyname), id);
 }
-
+//定义了处理信号的on_signal函数，当接收到信号时会打印信号的名称和进程ID。
 int on_signal(pid_t pid, int sig, void* UNUSED(userptr)) {
     char buf[100];
     combined_name(buf, sizeof(buf), sig, get_signal_name);
     fprintf(stderr, "Signal: %s in %d\n", buf, (int)(pid));
     return (sig != SIGTRAP);
 }
-
+//定义了处理系统调用的on_syscall函数，它会在进入系统调用和离开系统调用时打印相关信息，包括系统调用的名称、参数和返回值。
 void on_syscall(pid_t pid, int type, void* data_) {
     struct user_regs_struct regs;
     struct syscall_info     info;
@@ -103,7 +104,14 @@ void on_ptrace_event(pid_t pid, int event, void* UNUSED(user_ptr)) {
     combined_name(buf, sizeof(buf), event, get_ptraceevent_name);
     fprintf(stderr, "Ptrace event %s in %d\n", buf, pid);
 }
-
+//在main函数中，检查命令行参数是否足够，如果不足则打印错误信息并退出。
+//使用fork创建一个子进程，子进程负责执行待跟踪的程序。
+//在子进程中，调用trace_me函数以启用跟踪。
+//在子进程中，调用execve函数以执行待跟踪的程序。
+//在父进程中，初始化静态数据结构static_data，其中包含系统页面大小。
+//设置回调函数结构体callbacks，将之前定义的回调函数与相应的事件关联起来。
+//调用tracing_loop函数开始跟踪，直到跟踪结束。
+//返回0表示程序正常退出。
 int main(int argc, char** argv) {
     if (argc < 2)
         die(1, "Not enough args, wanted: >=1, %d supplied\n", argc - 1);
@@ -134,3 +142,4 @@ int main(int argc, char** argv) {
     
     return 0;
 }
+
